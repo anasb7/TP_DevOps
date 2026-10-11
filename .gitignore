@@ -1,0 +1,9 @@
+guestbook
+basic-web
+*.exe
+*.test
+tmp/
+.env
+.vscode/
+.idea/
+*:Zone.Identifier
