@@ -1,0 +1,8 @@
+services:
+  guestbook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: guestbook:v0.3.0
+    ports:
+      - "3000:3000"
