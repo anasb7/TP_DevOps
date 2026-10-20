@@ -64,7 +64,52 @@ Que l'ordre des instructions dans un Dockerfile décide de ce que le cache peut 
 
 ## Exercice 2 — Ajouter une base de données
 
-*(à compléter)*
+Brancher un Redis sur le guestbook pour qu'il enregistre enfin les messages, au lieu d'afficher « No database connection ».
+
+### Problème rencontré et pourquoi il est survenu
+
+L'application se connecte à Redis comme ceci :
+
+```go
+Addr: os.Getenv("REDIS_HOST") + ":6379"
+```
+
+Tant que la variable n'est pas définie, l'adresse vaut `":6379"`, c'est-à-dire le localhost du conteneur guestbook. Or ce conteneur ne contient qu'un binaire de 4 MB, rien d'autre. La connexion échoue, le handler part en `panic`, et Negroni le rattrape et renvoie une erreur — d'où le message d'avertissement qui ne bouge pas et le sablier qui tourne quand on soumet un message.
+
+Le réflexe serait de mettre `localhost` dans la variable, mais ça ne change rien : chaque conteneur a sa propre pile réseau, et son localhost ne désigne que lui-même.
+
+### Solution appliquée et pourquoi cette solution fonctionne
+
+J'ai ajouté un second service dans `docker-compose.yaml` et renseigné la variable :
+
+```yaml
+services:
+  guestbook:
+    ...
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+```
+
+Compose crée un réseau privé pour le projet, avec un DNS interne où chaque service est joignable **par son nom de service**. Mettre `redis` donne donc l'adresse `redis:6379`, qui est résolue vers le bon conteneur.
+
+Le service Redis n'a pas de `build` : on tire l'image publique officielle telle quelle. J'ai mis le tag `redis:7` et pas `latest`, pour que le comportement reste le même dans six mois.
+
+`depends_on` force Redis à démarrer avant guestbook. À noter qu'il garantit l'ordre de démarrage, pas que Redis soit prêt à répondre — ça passe ici parce que Redis démarre vite, mais avec une base plus lente il faudrait un `healthcheck`.
+
+### Ce que j'ai appris
+
+Que dans un réseau Compose, les services se parlent par leur nom, et que `localhost` dans un conteneur ne désigne que ce conteneur. C'est le genre d'erreur qui donne un message trompeur (« connexion refusée ») alors que le service tourne parfaitement à côté.
+
+Que la configuration par variables d'environnement permet de brancher la même image sur des backends différents sans la recompiler. La même image `guestbook:v0.3.0` fonctionne en local avec ce Redis-là et pourrait pointer ailleurs en production.
+
+Et en testant un `docker compose down` puis `up` : les messages disparaissent. Le système de fichiers d'un conteneur naît et meurt avec lui. Pour garder des données il faut les stocker ailleurs — c'est l'objet de l'exercice suivant.
 
 ---
 
