@@ -92,6 +92,9 @@ func main() {
 	r.Path("/info").Methods("GET").HandlerFunc(InfoHandler)
 	r.Path("/env").Methods("GET").HandlerFunc(EnvHandler)
 	r.Path("/healthz").Methods("GET").HandlerFunc(HealthHandler)
+	r.Path("/hello").Methods("GET").HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Write([]byte("hot reload OK"))
+	})
 
 	n := negroni.Classic()
 	n.UseHandler(r)

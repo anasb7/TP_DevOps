@@ -115,8 +115,49 @@ Et en testant un `docker compose down` puis `up` : les messages disparaissent. L
 
 ## Exercice 3 — Persistance et hot-reloading
 
-*(à compléter)*
+Garder les données Redis entre deux redémarrages, et modifier le code Go sans reconstruire l'image.
 
+### Problème rencontré et pourquoi il est survenu
+
+**La persistance.** Après un `docker compose down`, les messages disparaissaient : Redis écrit dans `/data`, mais ce dossier appartient au système de fichiers du conteneur, supprimé avec lui.
+
+**Le hot-reload.** Impossible de recompiler dans mon image de production, qui part de `scratch` et n'a ni shell ni compilateur. Il fallait une image séparée pour le développement.
+
+Une fois `Dockerfile.dev` et `.air.toml` en place, Air démarrait mais la compilation échouait :
+
+```
+error obtaining VCS status: exit status 128
+/bin/sh: 1: /app/tmp/main: not found
+```
+
+Depuis Go 1.18, `go build` inscrit des infos Git dans le binaire et lance donc `git` dans le projet. Comme je monte tout mon dossier dans le conteneur, `.git/` est monté avec — mais il appartient à mon utilisateur côté machine alors que le processus tourne en root. Git refuse et renvoie 128, le binaire n'est jamais créé.
+
+### Solution appliquée et pourquoi cette solution fonctionne
+
+**Persistance** — un volume nommé :
+
+```yaml
+  redis:
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
+```
+
+Le volume est géré par Docker, en dehors des conteneurs. Redis écrit dans `/data` sans savoir que c'est monté ailleurs, et les données survivent à un `down` (`keys loaded: 1` dans les logs au redémarrage).
+
+**Hot-reload** — trois fichiers séparés du circuit de production : `Dockerfile.dev` (image Go complète + Air), `.air.toml` (quoi surveiller, comment recompiler) et `docker-compose.dev.yaml` qui monte le code en bind mount (`.:/app`). C'est ce montage qui fait tout : le conteneur travaille sur mes fichiers, donc Air voit mes modifications dès la sauvegarde.
+
+**Erreur de build** — ajout de `-buildvcs=false` dans la commande de compilation, le stamping Git n'ayant aucun intérêt en développement.
+
+### Ce que j'ai appris
+
+La différence entre les deux types de montage, qui ne sont pas interchangeables : le **volume nommé** est géré par Docker et sert aux **données** (portable) ; le **bind mount** expose un dossier de ma machine et sert au **code source** en dev (non portable). Les inverser casserait les deux usages.
+
+Qu'une image optimisée pour la production est inutilisable en développement : `scratch` est parfait pour livrer et incapable de recompiler. D'où deux Dockerfiles et deux fichiers compose décrivant deux environnements à partir du même code.
+
+Et qu'un bind mount monte **tout** le dossier, y compris ce à quoi on ne pense pas — ici `.git/`, qui a causé une erreur de compilation sans rapport apparent avec Docker.
 ---
 
 ## Exercice 4 — Hot-reloading sur d'autres stacks
