@@ -1,0 +1,13 @@
+services:
+  node-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3001"
+    volumes:
+
+      - .:/app
+      - /app/node_modules
+    environment:
+      PORT: 3001

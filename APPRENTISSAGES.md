@@ -162,4 +162,44 @@ Et qu'un bind mount monte **tout** le dossier, y compris ce à quoi on ne pense 
 
 ## Exercice 4 — Hot-reloading sur d'autres stacks
 
-*(à compléter)*
+
+Refaire le hot-reload dans un autre langage, avec une petite application Express et nodemon.
+
+### Problème rencontré et pourquoi il est survenu
+
+Le piège est dans le bind mount. En montant mon dossier avec `.:/app`, j'écrase le contenu de `/app` dans le conteneur — y compris le `node_modules` que `npm install` venait d'y installer pendant le build. Mon dossier local n'en ayant pas, le conteneur se retrouve sans dépendances et plante sur `Cannot find module 'express'`.
+
+Second point propre à WSL : les événements inotify ne traversent pas toujours la frontière Windows/Linux à travers un bind mount, donc nodemon peut ne rien détecter.
+
+### Solution appliquée et pourquoi cette solution fonctionne
+
+**Un volume anonyme sur `node_modules`** :
+
+```yaml
+volumes:
+  - .:/app
+  - /app/node_modules
+```
+
+La seconde ligne protège ce chemin du bind mount : Docker y garde ce que le build avait installé. Même mécanisme que le `- /app/tmp` utilisé côté Go.
+
+**`nodemon --legacy-watch`** bascule la surveillance en mode scrutation : nodemon vérifie les fichiers périodiquement au lieu d'attendre une notification. Plus coûteux en CPU, mais fiable sous WSL.
+
+Le reste est identique au Go : image de base avec le runtime, `COPY package*.json` séparé pour garder `npm install` en cache, code monté en bind mount, watcher lancé par le `CMD`.
+
+### Ce que j'ai appris
+
+Que le pattern du hot-reload ne dépend pas du langage : **bind mount du code + un watcher dans le conteneur**. Seul l'outil change.
+
+Mais que les contraintes diffèrent :
+
+| | Go + Air | Node + nodemon |
+|---|---|---|
+| À chaque changement | compiler puis relancer | relancer seulement |
+| Rechargement | 1–2 s | moins d'1 s |
+| Dépendances | dans le binaire | dans `node_modules` |
+| Image de prod minimale | `scratch`, 4 MB | impossible, il faut Node |
+
+Go paie une compilation à chaque sauvegarde mais livre une image qui ne contient que son binaire. Node recharge plus vite mais doit toujours embarquer son runtime.
+
+Et que la logique du cache Docker se transpose telle quelle : `package.json` joue exactement le rôle de `go.mod`.

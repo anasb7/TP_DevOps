@@ -1,0 +1,16 @@
+{
+  "name": "stack-nodejs-hotreload",
+  "version": "1.0.0",
+  "description": "Demo hot-reload Node.js / Express avec nodemon",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon --legacy-watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
